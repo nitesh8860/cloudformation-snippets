@@ -1,0 +1,57 @@
+# Description: 'Template for creating Development user and attaching to a group'
+# Parameters:
+#   gitlabdnsHostedZodeId:
+#     Type: String
+#     Description: Enter HostedZoneId
+Resources:
+  dns:
+     Type: AWS::Route53::RecordSet
+     Properties:
+       HostedZoneId : xxxxxxxxxx
+       Name: sonar.projectdevops.com
+       ResourceRecords:
+         - !GetAtt machine.PrivateIp
+       TTL: '900'
+       Type: A
+     DependsOn:
+        - machine
+  machine:
+     Type: AWS::EC2::Instance
+     Properties:
+       #AvailabilityZone: eu-west-1a
+       BlockDeviceMappings:
+         -
+           DeviceName: /dev/xvda
+           Ebs:
+             VolumeSize: 50
+       ImageId: "ami-04d5cc9b88f9d1d39"
+           #"ami-0202869bdd0fc8c75"
+       InstanceType: "t2.medium"
+       KeyName: adopsecurity
+       SecurityGroupIds:
+         - sg-0da5ed9c4da6c9fcf
+       SubnetId: subnet-xxxxx
+       Tags:
+         -
+             Key: Name
+             Value: mig-cicd-sonar
+       UserData:
+           Fn::Base64: !Sub |
+            #!/bin/bash -xe
+            cat <<EOT >> /root/.ssh/authorized_keys
+            <SSHKEY>
+            EOT
+            yum update -y
+            sudo yum install -y curl policycoreutils openssh-server vim telnet git yum-utils
+            sudo yum install docker -y
+            systemctl start docker
+            systemctl enable docker
+            #Run Sonar
+            sudo su
+            docker run -d --name sonarqube -p 9000:9000 sonarqube:lts
+
+Outputs:
+  MachinePrivateIP:
+    Value: !GetAtt machine.PrivateIp
+  MachineURL:
+    Value: !Ref dns

@@ -1,0 +1,35 @@
+# aws cloudformation create-stack --stack-name CreateCodeCommitDevUser1 --template-body file:///mnt/c/Users/nitesh.chand.chauhan/Desktop/Atom/cloudformation/cicd/userManagement/newUser.yml --parameters ParameterKey=UserName,ParameterValue=CodeCommitDevUser1 ParameterKey=GroupName,ParameterValue=CodeCommitDevGroup  --capabilities CAPABILITY_NAMED_IAM
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Template for creating Development user and attaching to a group'
+Parameters:
+  UserName:
+    Type: String
+    Description: Enter User Name.
+  GroupName:
+    Type: String
+    Description: Enter Group Name.
+Resources:
+  UserAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref UserName
+    DependsOn:
+      - User
+  User:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Ref UserName
+      Groups:
+        - !Ref GroupName
+Outputs:
+  UserName:
+    Value: !Ref User
+  UserSecretAccessKey:
+    Description: |
+      AccessKey for the User
+    Value: !GetAtt UserAccessKey.SecretAccessKey
+  UserAccessKey:
+    Description: |
+      SecretAccessKey for the User
+    Value: !Ref UserAccessKey

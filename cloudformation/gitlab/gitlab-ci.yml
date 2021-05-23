@@ -1,0 +1,50 @@
+stages:
+  - .pre
+  - build
+  - upload
+
+image:
+  name: sonarsource/sonar-scanner-cli:latest
+  entrypoint: [""]
+variables:
+  SONAR_HOST_URL: $SONAR_HOST_URL
+  GIT_DEPTH: 0
+Sonarqube-check:
+  stage: .pre
+  script:
+    - sonar-scanner -Dsonar.qualitygate.wait=true  -Dsonar.projectKey=$CI_PROJECT_NAME-$CI_COMMIT_BRANCH -Dsonar.sources=. -Dsonar.projectVersion=$CI_COMMIT_SHORT_SHA-$CI_PIPELINE_ID
+
+
+Build-artifact:
+  image: node:6
+  stage: build
+  script:
+    - chown -R root:root *
+    - npm install
+    - npm install -g bower
+    - npm install -g gulp
+    - bower install --allow-root
+    - gulp clean
+    - gulp styles
+    - gulp scripts --max-old-space-size=8192
+    - gulp images
+    - gulp downloads
+    - gulp fonts
+    - gulp assembler
+    - tar czf $CI_PROJECT_NAME-$CI_COMMIT_BRANCH-$CI_COMMIT_SHORT_SHA-$CI_PIPELINE_ID.tar.gz --exclude=.git dist
+  artifacts:
+    paths:
+       - $CI_PROJECT_NAME-$CI_COMMIT_BRANCH-$CI_COMMIT_SHORT_SHA-$CI_PIPELINE_ID.tar.gz
+    expire_in:
+       - 3 days
+
+Upload-artifact:
+  image: node:6
+  stage: upload
+  dependencies:
+      - Build-artifact
+  script:
+      - curl -u nexus:password --upload-file $CI_PROJECT_NAME-$CI_COMMIT_BRANCH-$CI_COMMIT_SHORT_SHA-$CI_PIPELINE_ID.tar.gz http://10.0.3.30/nexus/service/local/repositories/$CI_PROJECT_NAME/content/$CI_PROJECT_NAME-$CI_COMMIT_BRANCH-$CI_COMMIT_SHORT_SHA-$CI_PIPELINE_ID.tar.gz
+  only:
+      - master
+      - develop

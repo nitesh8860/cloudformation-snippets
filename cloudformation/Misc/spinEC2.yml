@@ -1,0 +1,88 @@
+Description: 'Template for creating Development user and attaching to a group'
+Parameters:
+  HostedZodeId:
+    Type: String
+    Description: Enter HostedZoneId
+  DnsName:
+    Type: String
+    Description: Enter DNS Name
+  AvailabilityZone:
+    Type: String
+    Description: Enter AvailabilityZone
+  VolumeSize:
+    Type: Number
+    Description: Enter VolumeSize
+  Ami:
+    Type: String
+    Description: Enter Ami
+  InstanceType:
+    Type: String
+    Description: Enter InstanceType
+  KeyName:
+    Type: String
+    Description: Enter KeyName
+  SecurityGroup:
+    Type: String
+    Description: ENter SecurityGroupIds
+  SubnetId:
+    Type: String
+    Description: Enter SubnetId
+  PrivateIpAddress:
+    Type: Number
+    Description: ENter PrivateIpAddress
+  :
+    Type: String
+    Description:
+  :
+    Type: String
+    Description:
+
+Resources:
+  dns:
+     Type: AWS::Route53::RecordSet
+     Properties:
+       HostedZoneId : !Ref HostedZoneId
+       Name: !Ref DnsName
+       ResourceRecords:
+         - !GetAtt gitlab.PrivateIp
+       TTL: '900'
+       Type: A
+     DependsOn:
+        - machine
+  machine:
+     Type: AWS::EC2::Instance
+     Properties:
+       AvailabilityZone: !Ref AvailabilityZone
+       BlockDeviceMappings:
+         -
+           DeviceName: /dev/sda1
+           Ebs:
+             VolumeSize: !Ref VolumeSize
+       ImageId: !Ref Ami
+       InstanceType: !Ref InstanceType
+       KeyName: !Ref KeyName
+       SecurityGroupIds:
+         - !Ref SecurityGroup
+       SubnetId: !Ref SubnetId
+       PrivateIpAddress: !Ref PrivateIpAddress
+       Tags:
+         -
+             Key: Name
+             Value: mig-cicd-gitlab
+       UserData:
+           Fn::Base64: !Sub |
+            #!/bin/bash -xe
+            sudo dnf install -y curl policycoreutils openssh-server vim git
+            sudo systemctl enable sshd
+            sudo systemctl start sshd
+            curl https://packages.gitlab.com/install/repositories/gitlab/gitlab-ee/script.rpm.sh | sudo bash
+            sudo EXTERNAL_URL="https://gitlab.projectdevops.com" dnf install -y gitlab-ee
+            gitlab-ctl reconfigure
+            gitlab-rails runner "user = User.where(id: 1).first; user.password = 'Abcd1234$';  user.password_confirmation = 'Abcd1234$';"
+
+
+Outputs:
+  gitlabPrivateIP:
+    Value: !GetAtt gitlab.PrivateIp
+  gitlabURL:
+    Value: !Ref gitlabdns

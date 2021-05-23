@@ -1,0 +1,70 @@
+# Description: 'Template for creating Development user and attaching to a group'
+# Parameters:
+#   gitlabdnsHostedZodeId:
+#     Type: String
+#     Description: Enter HostedZoneId
+Resources:
+  gitlabdns:
+     Type: AWS::Route53::RecordSet
+     Properties:
+       HostedZoneId : xxxxxxxxxxxxxxxxxxxxxx
+       Name: gitlabRunner1.projectdevops.com
+       ResourceRecords:
+         - !GetAtt gitlab.PrivateIp
+       TTL: '900'
+       Type: A
+     DependsOn:
+        - gitlab
+  gitlab:
+     Type: AWS::EC2::Instance
+     Properties:
+       #AvailabilityZone: eu-west-1a
+       BlockDeviceMappings:
+         -
+           DeleteOnTermination: true
+           DeviceName: /dev/xvda
+           Ebs:
+             VolumeSize: 50
+       ImageId: "ami-xxxxxxxxxxxxx"
+       InstanceType: "t2.large"
+       KeyName: adopsecurity
+       SecurityGroupIds:
+         - sg-xxxxxxxxxxxx
+       SubnetId: subnet-xxxxxxxxxxx
+       Tags:
+         -
+             Key: Name
+             Value: mig-cicd-gitlabRunner1
+       UserData:
+           Fn::Base64: !Sub |
+            #!/bin/bash -xe
+            cat <<EOT >> /root/.ssh/authorized_keys
+            <SSH-KEY>
+            EOT
+            yum update -y
+            sudo yum install -y curl policycoreutils openssh-server vim telnet git yum-utils
+            curl -L https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.rpm.sh | sudo bash
+            sudo yum install gitlab-runner docker -y
+            systemctl start docker
+            systemctl enable docker
+            cat <<EOT >> /etc/gitlab-runner/gitlab.projectdevops.com.cer
+            <CERT-KEY>
+            EOT
+            sudo gitlab-runner register \
+              --non-interactive \
+              --url "https://gitlab.projectdevops.com/" \
+              --registration-token "xxxxxxxxxxx" \
+              --executor "docker" \
+              --docker-image node:latest \
+              --description "docker-runner" \
+              --tag-list "docker,aws" \
+              --run-untagged="true" \
+              --locked="false" \
+              --access-level="not_protected" \
+              --tls-ca-file="/etc/gitlab-runner/gitlab.projectdevops.com.cer"
+
+Outputs:
+  gitlabPrivateIP:
+    Value: !GetAtt gitlab.PrivateIp
+  gitlabURL:
+    Value: !Ref gitlabdns

@@ -1,0 +1,32 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Template for creating CICD pipeline for a new module in project'
+Parameters:
+  RepoName:
+    Type: String
+    Description: Enter Repository Name.
+  RepoDescription:
+    Type: String
+    Description: Enter Repository Description Name.
+  # MainBranchName:
+  #   Type: String
+  #   Default: master
+  #   Description: Enter main branch name. Default is master.
+  # DevBranchName:
+  #   Type: String
+  #   Default: develop
+  #   Description: Enter development branch name. Default is develop.
+Resources:
+  Repo:
+    Type: 'AWS::CodeCommit::Repository'
+    Properties:
+      RepositoryName: !Ref RepoName
+      RepositoryDescription: !Ref RepoDescription
+Outputs:
+  RepoName:
+    Description: |
+      Repository name for the module
+    Value: !GetAtt Repo.Name
+  RepoName:
+    Description: |
+      Repository name for the module
+    Value: !GetAtt Repo.CloneUrlHttp

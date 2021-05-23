@@ -1,0 +1,16 @@
+Resources:
+  gitlabEksCluster:
+    Type: 'AWS::EKS::Cluster'
+    Properties:
+      Name: project-dev
+      Version: '1.15'
+      RoleArn: >-
+        arn:aws:iam::xxxxxxxxxxx:role/eksClusterRole
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+          - sg-xxxxxxxxxxxxxx
+        SubnetIds:
+          - subnet-xxxxxxxxxxxx
+          - subnet-xxxxxxxxxx
+
+

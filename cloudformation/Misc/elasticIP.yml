@@ -1,0 +1,15 @@
+---
+Description: |
+  Allocate Elastic IP (EIP) for VPN, Nat Gateway 1 and 2.
+
+Resources:
+  TestEip:
+    Type: AWS::EC2::EIP
+
+
+Outputs:
+  TestEip:
+    Description: |
+      Test EIP
+    Value: !GetAtt TestEip.AllocationId
+...

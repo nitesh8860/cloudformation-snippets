@@ -1,0 +1,18 @@
+Resources:
+  gitlabEksNodegroup:
+    Type: 'AWS::EKS::Nodegroup'
+    Properties:
+      ClusterName: project-dev
+      NodeRole: 'arn:aws:iam::xxxxxxxxx:role/eksNodeGroupInstanceRole'
+      ScalingConfig:
+        MinSize: 1
+        DesiredSize: 1
+        MaxSize: 3
+      RemoteAccess:
+        Ec2SshKey: ansible-master
+        SourceSecurityGroups:
+           - sg-xxxxxxx
+      Subnets:
+        - subnet-xxxxxxxx
+        - subnet-xxxxxxxxx
+

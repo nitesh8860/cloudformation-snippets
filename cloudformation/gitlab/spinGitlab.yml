@@ -1,0 +1,55 @@
+# Description: 'Template for creating Development user and attaching to a group'
+# Parameters:
+#   gitlabdnsHostedZodeId:
+#     Type: String
+#     Description: Enter HostedZoneId
+Resources:
+  gitlabdns:
+     Type: AWS::Route53::RecordSet
+     Properties:
+       HostedZoneId : xxxxxxxxxxxxxxx
+       Name: gitlab.projectdevops.com
+       ResourceRecords:
+         - !GetAtt gitlab.PrivateIp
+       TTL: '900'
+       Type: A
+     DependsOn:
+        - gitlab
+  gitlab:
+     Type: AWS::EC2::Instance
+     Properties:
+       AvailabilityZone: eu-west-1a
+       BlockDeviceMappings:
+         -
+           DeviceName: /dev/sda1
+           Ebs:
+             VolumeSize: 50
+       ImageId: "ami-xxxxxxxxxxxx"
+       InstanceType: "t2.large"
+       KeyName: keyName
+       SecurityGroupIds:
+         - sg-xxxxxxxxxxxx
+       SubnetId: subnet-xxxxxxxxxxxxx
+       PrivateIpAddress: 10.0.4.11
+       Tags:
+         -
+             Key: Name
+             Value: mig-cicd-gitlab
+       UserData:
+           Fn::Base64: !Sub |
+            #!/bin/bash -xe
+            sudo dnf install -y curl policycoreutils openssh-server vim telnet git
+            sudo systemctl enable sshd
+            sudo systemctl start sshd
+            curl https://packages.gitlab.com/install/repositories/gitlab/gitlab-ee/script.rpm.sh | sudo bash
+            sudo EXTERNAL_URL="https://gitlab.projectdevops.com" dnf install -y gitlab-ee
+            # gitlab-ctl reconfigure
+            # gitlab-rails runner "user = User.where(id: 1).first; user.password = 'Abcd1234$';  user.password_confirmation = 'Abcd1234$';"
+            cat <<EOT >> /root/.ssh/authorized_keys
+            <SSH-KEY>
+            EOT
+Outputs:
+  gitlabPrivateIP:
+    Value: !GetAtt gitlab.PrivateIp
+  gitlabURL:
+    Value: !Ref gitlabdns

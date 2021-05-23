@@ -1,0 +1,141 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: A Lambda functon to encrypt S3 buckets with kms
+Resources:
+  RoleForS3:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: InLine_Policy_For_Lambda_To_work_with_S3_and_KMS
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - 's3:*'
+                  - 'kms:*'
+                Resource: '*'
+                Effect: Allow
+                Sid: VisualEditor0
+  StatesExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - 'Fn::Sub': 'states.${AWS::Region}.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: StatesExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                Resource: '*'
+  S3EncryptionLambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code:
+        ZipFile:
+          'Fn::Join':
+            - |+
+
+            - - 'import boto3,time'
+              - from botocore.client import ClientError
+              - 'def do_it(source_bucket, bucket_region,event, result ) :'
+              - '    KMS = None'
+              - '    if event.get(''key'') : KMS = event.get(''key'').get(bucket_region)'
+              - '    my_session = boto3.Session(region_name=bucket_region)'
+              - '    my_client = my_session.client(''s3'')'
+              - '    try :'
+              - '        if KMS :'
+              - '            my_client.put_bucket_encryption(Bucket=source_bucket, ServerSideEncryptionConfiguration={ ''Rules'': [ { ''ApplyServerSideEncryptionByDefault'': { ''SSEAlgorithm'': ''aws:kms'', ''KMSMasterKeyID'': KMS } }, ] } )'
+              - '        else :    '
+              - '            my_client.put_bucket_encryption(Bucket=source_bucket, ServerSideEncryptionConfiguration={ ''Rules'': [ { ''ApplyServerSideEncryptionByDefault'': { ''SSEAlgorithm'': ''aws:kms'' } } ] } )'
+              - '        time.sleep(10)'
+              - '        response = my_client.get_bucket_encryption(Bucket=source_bucket)'
+              - '        if response[''ServerSideEncryptionConfiguration''][''Rules''][0][''ApplyServerSideEncryptionByDefault''][''SSEAlgorithm''] == ''aws:kms'' : '
+              - '            result.append(''Bucket : %s , ServerSideEncryption : %s , Key : %s - OK'' % ( source_bucket, response[''ServerSideEncryptionConfiguration''][''Rules''][0][''ApplyServerSideEncryptionByDefault''][''SSEAlgorithm''], response[''ServerSideEncryptionConfiguration''][''Rules''][0][''ApplyServerSideEncryptionByDefault''].get(''KMSMasterKeyID'')))'
+              - '        return True'
+              - '    except ClientError as e:'
+              - '        print(''Bucket : %s , Error : %s - ERROR %s'' % ( source_bucket, e.response[''Error''][''Code''],e.response))'
+              - '        return False'
+              - ''
+              - ''
+              - ''
+              - 'def lambda_handler(event, context) :'
+              - '    result = []'
+              - '    my_session = boto3.Session()'
+              - '    my_client = my_session.client(''s3'')'
+              - '    if event.get(''buckets'') :'
+              - '        bucket_list = event.get(''buckets'')'
+              - '    else :'
+              - '        bucket_list = [i[''Name''] for i in my_client.list_buckets()[''Buckets'']]'
+              - '    for i in bucket_list :'
+              - '        response = my_client.get_bucket_location( Bucket=i)'
+              - '        bucket_region = response.get(''LocationConstraint'')'
+              - '        try : '
+              - '            response = my_client.get_bucket_encryption(Bucket=i)'
+              - '            if response[''ServerSideEncryptionConfiguration''][''Rules''][0][''ApplyServerSideEncryptionByDefault''][''SSEAlgorithm''] == ''aws:kms'' : '
+              - '                result.append(''Bucket : %s , ServerSideEncryption : %s , Key : %s - OK'' % ( i, response[''ServerSideEncryptionConfiguration''][''Rules''][0][''ApplyServerSideEncryptionByDefault''][''SSEAlgorithm''], response[''ServerSideEncryptionConfiguration''][''Rules''][0][''ApplyServerSideEncryptionByDefault''].get(''KMSMasterKeyID'')))'
+              - '            else :'
+              - '                result.append(''Bucket : %s , ServerSideEncryption : %s - NOT OK'' % ( i, response[''ServerSideEncryptionConfiguration''][''Rules''][0][''ApplyServerSideEncryptionByDefault''].get(''SSEAlgorithm'')))'
+              - '                if not bucket_region : bucket_region=''us-east-1'''
+              - '                do_it(i, bucket_region, event, result) '
+              - '        except ClientError as e:'
+              - '            if e.response[''Error''][''Code''] == ''ServerSideEncryptionConfigurationNotFoundError'':'
+              - '                result.append(''Bucket : %s , ServerSideEncryption : %s - NOT OK'' % ( i, e.response[''Error''][''Code'']))'
+              - '                if not bucket_region : bucket_region=''us-east-1'''
+              - '                do_it(i, bucket_region, event, result)'
+              - '            else:'
+              - '                result.append(''Bucket : %s , ServerSideEncryption : %s - ERROR'' % ( i, e.response[''Error''][''Code'']))'
+              - '    return result'
+      Description: This function is a part of S3 encryption task
+      Handler: index.lambda_handler
+      Role:
+        'Fn::GetAtt':
+          - RoleForS3
+          - Arn
+      Runtime: python3.6
+      Timeout: '900'
+  S3BucketEcryption:
+    Type: 'AWS::StepFunctions::StateMachine'
+    Properties:
+      DefinitionString:
+        'Fn::Sub': |-
+
+          {
+            "Comment": "A Hello World example of the Amazon States Language using a Pass state",
+            "StartAt": "S3EncryptionLambda",
+            "States": {
+              "S3EncryptionLambda": {
+                "Type": "Task",
+                "Resource": "${S3EncryptionLambda.Arn}",
+                "End": true
+              }
+            }
+          }
+      RoleArn:
+        'Fn::GetAtt':
+          - StatesExecutionRole
+          - Arn
+Outputs:
+  RoleName:
+    Description: Provide access to this role to use CMK
+    Value:
+      'Fn::GetAtt':
+        - RoleForS3
+        - Arn

@@ -1,0 +1,402 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Pulse Connect Secure with three interfaces deployed on existing VPC
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: Existing VPC details
+        Parameters:
+          - VpcId
+          - SubnetIntId
+          - SubnetExtId
+          - SubnetMgmtId
+      - Label:
+          default: Pulse Connect Secure Configuration
+        Parameters:
+          - InstanceType
+          - AdminUsername
+          - AdminPassword
+          - PCSConfigData
+          - KeyName
+      - Label:
+          default: Security Configuration
+        Parameters:
+          - RemoteAccessCIDR
+    ParameterLabels:
+      VpcId:
+        default: Existing VPC ID
+      SubnetIntId:
+        default: Internal Subnet ID
+      SubnetExtId:
+        default: External Subnet ID
+      SubnetMgmtId:
+        default: Management Subnet ID
+      InstanceType:
+        default: Instance Type
+      AdminUsername:
+        default: Admin User Name
+      AdminPassword:
+        default: Admin Password
+      KeyName:
+        default: SSH Key Name
+      PCSConfigData:
+        default: Config Data
+      RemoteAccessCIDR:
+        default: Remote Access CIDR
+Parameters:
+  KeyName:
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    Default: ''
+    AllowedPattern: '[-_ a-zA-Z0-9]*'
+    Description: Name of an existing EC2 KeyPair. Your PCS will launch with this KeyPair.
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair.
+  InstanceType:
+    Description: Select Pulse Connect Secure instance type
+    Type: String
+    Default: t2.medium
+    AllowedValues:
+      - t2.medium
+      - t2.large
+      - t2.xlarge
+      - t2.2xlarge
+      - m4.large
+      - m4.xlarge
+      - m4.2xlarge
+      - m3.medium
+      - m3.large
+      - m3.xlarge
+      - m3.2xlarge
+      - c4.large
+      - c4.xlarge
+      - c4.2xlarge
+      - c3.large
+      - c3.xlarge
+      - c3.2xlarge
+      - r3.large
+      - r3.xlarge
+      - r3.2xlarge
+    ConstraintDescription: Must be an allowed EC2 instance type.
+  AdminUsername:
+    Description: Pulse Connect Secure admin user.
+    Type: String
+    Default: pcsadmin
+    MinLength: '1'
+    MaxLength: '30'
+    AllowedPattern: '.{1,30}'
+  AdminPassword:
+    Description: Password for the Pulse Connect Secure admin user.
+    Type: String
+    MinLength: '10'
+    MaxLength: '128'
+    AllowedPattern: '.{10,128}'
+    NoEcho: 'true'
+  PCSConfigData:
+    Type: String
+    Description: Pulse Connect Secure configuration data.
+    Default: >-
+      <wins-server>1.1.1.1</wins-server><dns-domain>psecure.net</dns-domain><cert-common-name>va1.psecure.net</cert-common-name><cert-random-text>fdsfpisonvsfnms</cert-random-text><cert-organisation>Psecure
+      Org</cert-organisation><config-download-url></config-download-url><config-data></config-data><auth-code-license></auth-code-license><enable-license-server>n</enable-license-server><accept-license-agreement>y</accept-license-agreement><enable-rest>n</enable-rest>
+    AllowedPattern: >-
+      ^<wins-server>(([2][5][0-5]\.)|([2][0-4][0-9]\.)|([0-1]?[0-9]?[0-9]\.)){3}(([2][5][0-5])|([2][0-4][0-9])|([0-1]?[0-9]?[0-9]))</wins-server><dns-domain>.{1,50}</dns-domain><cert-common-name>.{1,50}</cert-common-name><cert-random-text>.{1,50}</cert-random-text><cert-organisation>.{1,80}</cert-organisation><config-download-url>.*</config-download-url><config-data>.*</config-data><auth-code-license>.*</auth-code-license><enable-license-server>[yn]</enable-license-server><accept-license-agreement>[yn]</accept-license-agreement><enable-rest>[yn]</enable-rest>$
+    ConstraintDescription: >-
+      Invalid configuration. Please refer Pulse Connect Secure AWS deployment
+      guide for configuration elements and allowed values.
+  RemoteAccessCIDR:
+    Description: >-
+      The CIDR IP range that is permitted to access the Pulse Connect Secure
+      instance
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    AllowedPattern: >-
+      ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$
+    ConstraintDescription: >-
+      The CIDR IP range that is permitted to access the Pulse Connect Secure
+      instance. We recommend that you set this value to a trusted IP range. Must
+      be a valid CIDR range of the form x.x.x.x/x.
+  VpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: Existing VPC to deploy the Pulse Connect Secure into.
+  SubnetIntId:
+    Type: 'AWS::EC2::Subnet::Id'
+    Description: Pulse Connect Secure VM internal interface connects to this subnet
+  SubnetExtId:
+    Type: 'AWS::EC2::Subnet::Id'
+    Description: Pulse Connect Secure VM external interface connects to this subnet
+  SubnetMgmtId:
+    Type: 'AWS::EC2::Subnet::Id'
+    Description: Pulse Connect Secure VM management interface connects to this subnet
+Mappings:
+  PCSAMI:
+    us-east-1:
+      img: ami-03ec132b40f4ca3ea
+    us-east-2:
+      img: ami-088ff5e626251be34
+    us-west-1:
+      img: ami-0383f838d32ef509d
+    us-west-2:
+      img: ami-0fb3e5a77635d1d02
+    us-gov-east-1:
+      img: ami-21e50650
+    us-gov-west-1:
+      img: ami-2486d445
+    ca-central-1:
+      img: ami-09706808f2e3bec64
+    eu-central-1:
+      img: ami-0ea530404eb114d90
+    eu-west-1:
+      img: ami-0d8d1950c90e99754
+    eu-west-2:
+      img: ami-0e0b091f5328607d0
+    eu-west-3:
+      img: ami-06e9b0626782ddd6c
+    eu-north-1:
+      img: ami-0502ce261433a80ba
+    ap-southeast-1:
+      img: ami-075678a1bc15e4d0c
+    ap-southeast-2:
+      img: ami-01bfbd0a0aca3edf2
+    ap-south-1:
+      img: ami-0ec07421322916067
+    ap-northeast-1:
+      img: ami-05f11cc97d808ca8c
+    ap-northeast-2:
+      img: ami-08c3a2f769d2b2950
+    sa-east-1:
+      img: ami-0599ffba80a03319a
+Resources:
+  EIP1:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      Domain: vpc
+  EIPAssoc1:
+    Type: 'AWS::EC2::EIPAssociation'
+    Properties:
+      NetworkInterfaceId: !Ref Eth1
+      AllocationId: !GetAtt
+        - EIP1
+        - AllocationId
+      PrivateIpAddress: !GetAtt
+        - Eth1
+        - PrimaryPrivateIpAddress
+  EIP2:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      Domain: vpc
+  EIPAssoc2:
+    Type: 'AWS::EC2::EIPAssociation'
+    Properties:
+      NetworkInterfaceId: !Ref Eth2
+      AllocationId: !GetAtt
+        - EIP2
+        - AllocationId
+      PrivateIpAddress: !GetAtt
+        - Eth2
+        - PrimaryPrivateIpAddress
+  PCSvExternalSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Access Rules for PCS external port
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: icmp
+          FromPort: '-1'
+          ToPort: '-1'
+          CidrIp: !Ref RemoteAccessCIDR
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: !Ref RemoteAccessCIDR
+        - IpProtocol: tcp
+          FromPort: '443'
+          ToPort: '443'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: udp
+          FromPort: '4500'
+          ToPort: '4500'
+          CidrIp: !Ref RemoteAccessCIDR
+        - IpProtocol: tcp
+          FromPort: '11000'
+          ToPort: '11099'
+          CidrIp: !Ref RemoteAccessCIDR
+      SecurityGroupEgress:
+        - CidrIp: 127.0.0.1/32
+          IpProtocol: '-1'
+      Tags:
+        - Key: Name
+          Value: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - PCS
+              - ExtSG
+  PCSvInternalSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Access Rules for PCS internal port
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: icmp
+          FromPort: '-1'
+          ToPort: '-1'
+          CidrIp: !Ref RemoteAccessCIDR
+        - IpProtocol: tcp
+          FromPort: '6667'
+          ToPort: '6667'
+          CidrIp: !Ref RemoteAccessCIDR
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: !Ref RemoteAccessCIDR
+        - IpProtocol: tcp
+          FromPort: '443'
+          ToPort: '443'
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - PCS
+              - IntSG
+  PCSvManagementSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Access Rules for PCS Management port
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: icmp
+          FromPort: '-1'
+          ToPort: '-1'
+          CidrIp: !Ref RemoteAccessCIDR
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: !Ref RemoteAccessCIDR
+        - IpProtocol: tcp
+          FromPort: '443'
+          ToPort: '443'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '6667'
+          ToPort: '6667'
+          CidrIp: !Ref RemoteAccessCIDR
+        - IpProtocol: tcp
+          FromPort: '830'
+          ToPort: '830'
+          CidrIp: !Ref RemoteAccessCIDR
+      SecurityGroupEgress:
+        - CidrIp: 127.0.0.1/32
+          IpProtocol: '-1'
+      Tags:
+        - Key: Name
+          Value: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - PCS
+              - MgmtSG
+  EC2Instance:
+    Type: 'AWS::EC2::Instance'
+    DependsOn:
+      - EIPAssoc1
+      - EIPAssoc2
+    Properties:
+      ImageId: !FindInMap
+        - PCSAMI
+        - !Ref 'AWS::Region'
+        - img
+      KeyName: !Ref KeyName
+      InstanceType: !Ref InstanceType
+      NetworkInterfaces:
+        - NetworkInterfaceId: !Ref Eth0
+          DeviceIndex: '0'
+        - NetworkInterfaceId: !Ref Eth1
+          DeviceIndex: '1'
+        - NetworkInterfaceId: !Ref Eth2
+          DeviceIndex: '2'
+      Tags:
+        - Key: Name
+          Value: !Join
+            - '-'
+            - - !Ref 'AWS::StackName'
+              - PCS
+              - EC2
+      UserData: !Base64
+        'Fn::Join':
+          - ''
+          - - <pulse-config>
+            - <admin-password>
+            - !Ref AdminPassword
+            - </admin-password>
+            - <admin-username>
+            - !Ref AdminUsername
+            - </admin-username>
+            - !Ref PCSConfigData
+            - </pulse-config>
+  Eth0:
+    Type: 'AWS::EC2::NetworkInterface'
+    Properties:
+      Description: eth0
+      GroupSet:
+        - !Ref PCSvInternalSecurityGroup
+      SourceDestCheck: 'false'
+      SubnetId: !Ref SubnetIntId
+      Tags:
+        - Key: Name
+          Value: Interface 0
+        - Key: Interface
+          Value: eth0
+  Eth1:
+    Type: 'AWS::EC2::NetworkInterface'
+    Properties:
+      Description: eth1
+      GroupSet:
+        - !Ref PCSvExternalSecurityGroup
+      SourceDestCheck: 'false'
+      SubnetId: !Ref SubnetExtId
+      Tags:
+        - Key: Name
+          Value: Interface 1
+        - Key: Interface
+          Value: eth1
+  Eth2:
+    Type: 'AWS::EC2::NetworkInterface'
+    Properties:
+      Description: eth2
+      GroupSet:
+        - !Ref PCSvManagementSecurityGroup
+      SourceDestCheck: 'false'
+      SubnetId: !Ref SubnetMgmtId
+      Tags:
+        - Key: Name
+          Value: Interface 2
+        - Key: Interface
+          Value: eth2
+Outputs:
+  ManagementAddress:
+    Value: !Join
+      - ' '
+      - - 'Public IP address:'
+        - !Ref EIP2
+        - 'Private IP address:'
+        - !GetAtt
+          - Eth2
+          - PrimaryPrivateIpAddress
+    Description: Pulse Connect Secure Management Interface details
+  ExternalAddress:
+    Value: !Join
+      - ' '
+      - - 'Public IP address:'
+        - !Ref EIP1
+        - 'Private IP address:'
+        - !GetAtt
+          - Eth1
+          - PrimaryPrivateIpAddress
+    Description: Pulse Connect Secure Extenal Interface details
+  InternalAddress:
+    Value: !Join
+      - ' '
+      - - 'Private IP address:'
+        - !GetAtt
+          - Eth0
+          - PrimaryPrivateIpAddress
+    Description: Pulse Connect Secure Internal Interface details

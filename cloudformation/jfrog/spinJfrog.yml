@@ -1,0 +1,70 @@
+# Description: 'Template for creating Development user and attaching to a group'
+Parameters:
+  ToolName:
+    Type: String
+    Default: artifacts
+Resources:
+  dns:
+     Type: AWS::Route53::RecordSet
+     Properties:
+       HostedZoneId : xxxxxxxxxxxx
+       Name: !Join [ '.', [ !Ref ToolName, projectdevops, com ] ]
+       ResourceRecords:
+         - !GetAtt machine.PrivateIp
+       TTL: '900'
+       Type: A
+     DependsOn:
+        - machine
+  machine:
+     Type: AWS::EC2::Instance
+     Properties:
+       #AvailabilityZone: eu-west-1a
+       BlockDeviceMappings:
+         -
+           DeviceName: /dev/xvda
+           Ebs:
+             VolumeSize: 50
+       ImageId: "ami-04d5cc9b88f9d1d39"
+       InstanceType: "t2.medium"
+       KeyName: xxxxxx
+       SecurityGroupIds:
+         - sg-xxxxxxxx
+       SubnetId: subnet-xxxxxxx
+       Tags:
+         -
+             Key: Name
+             Value: !Join [ '-', [ mig, cicd, !Ref ToolName ] ]
+       UserData:
+           Fn::Base64: !Sub |
+            #!/bin/bash -xe
+            cat <<EOT >> /root/.ssh/authorized_keys
+            <SSH-KEY>
+            EOT
+
+            yum update -y
+            sudo yum install -y curl policycoreutils openssh-server vim telnet git yum-utils
+            sudo yum install docker -y
+            systemctl start docker
+            systemctl enable docker
+
+            sudo su
+            docker pull docker.bintray.io/jfrog/artifactory-oss:latest
+
+            mkdir /opt/jfrog
+            export JFROG_HOME=/opt/jfrog
+            mkdir -p $JFROG_HOME/artifactory/var/etc/
+            cd $JFROG_HOME/artifactory/var/etc/
+            touch ./system.yaml
+            chown -R 1030:1030 $JFROG_HOME/artifactory/var
+
+            docker run --name artifactory -v $JFROG_HOME/artifactory/var/:/var/opt/jfrog/artifactory -d -p 8081:8081 -p 80:8082 docker.bintray.io/jfrog/artifactory-oss:latest --restart always
+
+            curl -fL https://getcli.jfrog.io | sh
+            chmod +x jfrog
+            mv jfrog /usr/bin/
+
+Outputs:
+  MachinePrivateIP:
+    Value: !GetAtt machine.PrivateIp
+  MachineURL:
+    Value: !Ref dns
